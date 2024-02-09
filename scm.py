@@ -1,8 +1,10 @@
-from subprocess import Popen
 import sys
 from functools import cache
-from .log import get_logger
+from subprocess import Popen
+
 from requests import get
+
+from .log import get_logger
 
 log = get_logger("scm")
 

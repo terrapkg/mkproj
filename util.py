@@ -2,7 +2,7 @@ import os
 import sys
 import time
 from contextlib import suppress
-from multiprocessing import Queue, Process
+from multiprocessing import Process, Queue
 from subprocess import PIPE, Popen
 from typing import IO, Callable, Optional, TypeVar
 
@@ -20,7 +20,7 @@ def prefix_lines(s: str, prefix: str) -> str:
     return "\n".join([f"{prefix}{line}" for line in s.splitlines()])
 
 
-def _just_read(qin: Queue, qres: Queue, fd: IO[str]):
+def _just_read(qin: Queue, qres: Queue, fd: IO[bytes]):
     os.set_blocking(fd.fileno(), False)
     while True:
         with suppress(TypeError):
@@ -34,8 +34,10 @@ def _just_read(qin: Queue, qres: Queue, fd: IO[str]):
 
 
 def run_show_output(cmd: list[str], prefix: str = "") -> tuple[int, str, str]:
+    # TODO: optimizations?
     print(end=f"\n{prefix}", flush=True)
-    proc = Popen(cmd, stdout=PIPE, stderr=PIPE, bufsize=0, universal_newlines=True)
+    # Cannot use universal_newlines because it replaces \r with \n
+    proc = Popen(cmd, stdout=PIPE, stderr=PIPE, bufsize=0)
     assert proc.stdout
     assert proc.stderr
     qiout, qierr, qrout, qrerr = Queue(), Queue(), Queue(), Queue()
@@ -43,22 +45,24 @@ def run_show_output(cmd: list[str], prefix: str = "") -> tuple[int, str, str]:
     th_err = Process(target=_just_read, args=[qierr, qrerr, proc.stderr])
     th_out.start()
     th_err.start()
-    out, err, tmpout, tmperr = "", "", "", ""
+    out, err, tmpout, tmperr = "", "", b"", b""
     while True:
         while not qrout.empty():
             tmpout += qrout.get_nowait()
-        out += tmpout
-        sys.stdout.write(
-            tmpout.replace("\n", f"\n{prefix}").replace("\r", f"\r{prefix}")
-        )
-        tmpout = ""
+        with suppress(TypeError):
+            out += (sout := tmpout.decode("utf-8"))
+            tmpout = b""
+            sys.stdout.write(
+                sout.replace("\n", f"\n{prefix}").replace("\r", f"\r{prefix}")
+            )
         while not qrerr.empty():
             tmperr += qrerr.get_nowait()
-        err += tmperr
-        sys.stderr.write(
-            tmperr.replace("\n", f"\n{prefix}").replace("\r", f"\r{prefix}")
-        )
-        tmperr = ""
+        with suppress(TypeError):
+            err += (serr := tmperr.decode("utf-8"))
+            tmperr = b""
+            sys.stderr.write(
+                serr.replace("\n", f"\n{prefix}").replace("\r", f"\r{prefix}")
+            )
         if qrerr.empty() and qrout.empty() and (rc := proc.poll()) is not None:
             break
     if len(tmpout) > 0:

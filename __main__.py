@@ -1,13 +1,13 @@
 #!/bin/python3
-import sys
 import re
+import sys
+
 from . import spec
-from .scm import Scm, GitHub
-from .util import some
+from .scm import GitHub
 from .upd import generate_upd
+from .util import some
 
 # from typer import Argument, Option, Typer
-from requests import get
 
 # app = Typer()
 

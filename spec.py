@@ -1,8 +1,8 @@
 import re
 import sys
 import typing
-from subprocess import PIPE, Popen
 from functools import cache
+from subprocess import PIPE, Popen
 
 import toml
 

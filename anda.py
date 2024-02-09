@@ -1,5 +1,6 @@
-import jinja2
 from os import path
+
+import jinja2
 
 tmplenv = jinja2.Environment(loader=jinja2.FileSystemLoader("mkproj/templates"))
 

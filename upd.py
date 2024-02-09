@@ -1,4 +1,4 @@
-from . import spec, scm
+from . import scm, spec
 from .spec import BuildSys
 
 
