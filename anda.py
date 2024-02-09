@@ -1,7 +1,7 @@
 import jinja2
 from os import path
 
-tmplenv = jinja2.Environment(loader=jinja2.FileSystemLoader("templates"))
+tmplenv = jinja2.Environment(loader=jinja2.FileSystemLoader("mkproj/templates"))
 
 
 def gen_scm_anda(name: str, spec: str, url: str, branch: str, dest: str):
@@ -10,7 +10,7 @@ def gen_scm_anda(name: str, spec: str, url: str, branch: str, dest: str):
     x = tmpl.render(name=name, spec=spec, url=url, branch=branch)
     with open(path.join(dest, "anda.hcl"), "w+") as f:
         f.write(x)
-    print("out: {dest}/anda.hcl")
+    print(f"out: {dest}/anda.hcl")
 
 
 def gen_anda(spec: str, dest: str):
@@ -19,4 +19,4 @@ def gen_anda(spec: str, dest: str):
     x = tmpl.render(spec=spec)
     with open(path.join(dest, "anda.hcl"), "w+") as f:
         f.write(x)
-    print("out: {dest}/anda.hcl")
+    print(f"out: {dest}/anda.hcl")

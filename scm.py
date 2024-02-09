@@ -8,16 +8,16 @@ log = get_logger("scm")
 
 
 class Scm:
-    repourl: str
-    branch: str
-    ver_scheme: str
+    repourl: str = ""
+    branch: str = ""
+    ver_scheme: str = ""
 
     def repo(self) -> str:
         log.fatal("Unexpected call to `ScmBase.repo()`.")
         sys.exit(1)
 
-    def get_file_content(self, filename: str) -> str:
-        log.fatal(f"Unexpected call to `ScmBase.get_file_content('{filename}')`.")
+    def fetch_file_content(self, filename: str) -> str:
+        log.fatal(f"Unexpected call to `ScmBase.fetch_file_content('{filename}')`.")
         sys.exit(1)
 
     def fetch_root_file_list(self) -> list[str]:
@@ -49,12 +49,13 @@ class GitHub(Scm):
     def fetch_file_content(self, filename: str) -> str:
         url = f"https://github.com/{self.repo()}/raw/{self.branch}/{filename}"
         print(end=f"scm: Downloading {url} ...")
-        out = get(url, allow_redirects=True).raw
+        out = get(url, allow_redirects=True).text
         print(" done.")
         return out
 
-    def fetch_root_file_list(self) -> list[str]:
-        url = "https://api.github.com/repos/{self.repo()}/contents/"
+    @cache
+    def fetch_root_file_list(self) -> list[str]:  # type: ignore
+        url = f"https://api.github.com/repos/{self.repo()}/contents/"
         if self.branch:
             url += f"?ref={self.branch}"
         print("scm: Fetching root list:")
@@ -62,13 +63,13 @@ class GitHub(Scm):
         repocontent = get(url)
         print(" done.")
         repocontent = repocontent.json()
-        print("scm: Parsed response JSON, found {len(repocontent)} entries.")
+        print(f"scm: Parsed response JSON, found {len(repocontent)} entries.")
         if not any(repocontent):
             exit("scm: Cannot continue with an empty repository.")
         if not self.branch:
             self.branch = repocontent[0]["url"].split("?ref=")[1]
-            print("scm: Determined default branch `{self.branch}` from response")
-        return [f.name for f in repocontent]
+            print(f"scm: Determined default branch `{self.branch}` from response")
+        return [f["name"] for f in repocontent]
 
     def fetch_version(self) -> str:
         if not self.ver_scheme:

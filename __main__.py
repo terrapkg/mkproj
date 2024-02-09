@@ -4,10 +4,12 @@ import re
 from . import spec
 from .scm import Scm, GitHub
 from .util import some
-from typer import Argument, Option, Typer
+from .upd import generate_upd
+
+# from typer import Argument, Option, Typer
 from requests import get
 
-app = Typer()
+# app = Typer()
 
 
 def determine_proj_type(files: list[str]) -> spec.BuildSys:
@@ -30,7 +32,7 @@ def determine_proj_type(files: list[str]) -> spec.BuildSys:
         case 0:
             exit("ERROR: No buildsystem detected.")
         case 1:
-            print(":: Found buildsystem: {detected[0]}")
+            print(f":: Found buildsystem: {detected[0]}")
             return spec.SYSID_TO_CLS[detected[0]]()
         case _:
             print(f"ERROR: Detected the following buildsystems: {', '.join(detected)}")
@@ -38,10 +40,12 @@ def determine_proj_type(files: list[str]) -> spec.BuildSys:
 
 
 def main():
-    if len(sys.argv) == 1:
-        return app(args=["--help"])
-    if some(sys.argv[1:], lambda arg: arg.startswith("-")):
-        return app(args=["--help" if x == "-h" else x for x in sys.argv[1:]])
+    # TODO: support for parsing cli
+
+    # if len(sys.argv) == 1:
+    #     return app(args=["--help"])
+    # if some(sys.argv[1:], lambda arg: arg.startswith("-")):
+    #     return app(args=["--help" if x == "-h" else x for x in sys.argv[1:]])
     arg = sys.argv[1]
     scm = None
     if re.match(r"^https://github\.com/.+", arg):
@@ -54,7 +58,9 @@ def main():
         exit("Cannot detect SCM.")
     files = scm.fetch_root_file_list()
     buildsys = determine_proj_type(files)
+    buildsys.scm = scm
     buildsys()
+    generate_upd(buildsys)
 
 
 if __name__ == "__main__":

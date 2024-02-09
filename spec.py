@@ -1,12 +1,15 @@
 import re
-from subprocess import Popen, PIPE
-import os, sys
+import sys
 import typing
+from subprocess import PIPE, Popen
+from functools import cache
+
 import toml
+
+from .anda import gen_anda, gen_scm_anda
 from .log import get_logger
-from .util import some
-from .anda import gen_scm_anda, gen_anda
 from .scm import Scm
+from .util import run_show_output, some
 
 bsl = get_logger("buildsys")
 
@@ -32,6 +35,12 @@ class BuildSys:
         sys.exit(1)
 
 
+class SpecGenerator(BuildSys):
+    specpath: str
+    versioning: str
+    # TODO: everything??
+
+
 class Rust(BuildSys):
     RE_LICENSE = re.compile(
         r"^(# FIXME: paste output of %%cargo_license_summary here\n)(License: {8})# FIXME(\n# [^\n]+)$",
@@ -48,7 +57,7 @@ class Rust(BuildSys):
     license: str
 
     def populate(self):
-        cargo_toml = toml.loads(self.scm.get_file_content("Cargo.toml"))
+        cargo_toml = toml.loads(self.scm.fetch_file_content("Cargo.toml"))
         self.crate = cargo_toml.get("package", {}).get("name", "")
         if not self.crate:
             bsl.warn("Cannot get crate name")
@@ -57,33 +66,35 @@ class Rust(BuildSys):
             bsl.warn("Cannot get crate license")
 
     def rust2rpm(self) -> typing.Optional[str]:
-        if Popen(["which", "rust2rpm"]).wait():
+        if Popen(["which", "rust2rpm"], stdout=PIPE, stderr=PIPE).wait():
             bsl.error("rust2rpm is not installed.")
             sys.exit(1)
-        proc = Popen(["rust2rpm", self.crate], stderr=PIPE)
-        _, stderr = proc.communicate()
-        if proc.returncode:
-            bsl.error("Non-zero return code from rust2rpm")
+        bsl.info("Running rust2rpm")
+        rc, _, stderr = run_show_output(["rust2rpm", self.crate], "rust2rpm │ ")
+        if rc:
+            bsl.error(f"rust2rpm returned code {rc=}")
             sys.exit(1)
-        REGEX = r"^• Generated: (\N+)$"
-        files = [m.group(1) for m in re.finditer(REGEX, str(stderr), flags=re.M)]
+        REGEX = r" Generated: ([\w.-]+)"
+        files = [m.group(1) for m in re.finditer(REGEX, stderr, flags=re.M)]
+        bsl.info(f"rust2rpm generated {len(files)} file(s)")
+        # assumption: rust2rpm only generates 1 .spec file all the time
         return some(files, lambda f: f.endswith(".spec"))
 
     def edit_spec(self, specfile: str):
         bsl.debug("Reading spec")
         with open(specfile, "r") as f:
-            content = f.read()
+            spec = f.read()
         bsl.info("Editing spec")
-        content = re.sub(self.RE_LICENSE, content, r"\2" + self.license)
-        content = re.sub(self.RE_DEVEL_FILES, content, r"\1")
-        content = re.sub(self.RE_LICENSE_DEPS, content, "#license LICENSE.dependencies")
-        content = re.sub(self.RE_PREP, content, r"\1_online\n\3")
-        (content, n) = re.subn(self.RE_BUILD, content, "")
+        spec = re.sub(self.RE_LICENSE, r"\2" + self.license, spec)
+        spec = re.sub(self.RE_DEVEL_FILES, r"\1", spec)
+        spec = re.sub(self.RE_LICENSE_DEPS, r"\#license LICENSE.dependencies", spec)
+        spec = re.sub(self.RE_PREP, r"\1_online\n\3", spec)
+        (spec, n) = re.subn(self.RE_BUILD, "", spec)
         if n != 2:
             bsl.warn(f"RE_BUILD substituted {n} times (expected 2 only)")
         bsl.debug("Writing spec")
         with open(specfile, "w") as f:
-            f.write(content)
+            f.write(spec)
         print(f"out: {specfile}")
 
     def __call__(self):
@@ -100,11 +111,54 @@ class Rust(BuildSys):
 
 
 class Go(BuildSys):
-    pass
+    def go2rpm(self, ref: str) -> str:
+        if Popen(["which", "go2rpm"], stdout=PIPE, stderr=PIPE).wait():
+            bsl.error("go2rpm is not installed.")
+            sys.exit(1)
+        rc, stdout, _ = run_show_output(["go2rpm", ref], "go2rpm │ ")
+        if rc:
+            bsl.error(f"go2rpm returned code {rc=}")
+            sys.exit(1)
+        return stdout.strip()
+
+    def __call__(self):
+        gen_anda(self.go2rpm(self.scm.repourl), ".")
 
 
 class Python(BuildSys):
-    pass
+    @cache
+    def get_pypi(self) -> str:
+        rootfiles = self.scm.fetch_root_file_list()
+        if "pyproject.toml" in rootfiles:
+            pyproject = toml.loads(self.scm.fetch_file_content("pyproject.toml"))
+            return pyproject.get("project", {}).get("name", "")
+        elif "setup.py" in rootfiles:
+            setuppy = self.scm.fetch_file_content("setup.py")
+            res = re.findall(r'\s*name="(.+)"', setuppy, re.M)
+            if len(res) != 1:
+                bsl.error(f"Cannot parse setup.py, found name {len(res)} times.")
+                sys.exit(1)
+            return res[0]
+        else:
+            bsl.fatal("Cannot find files for getting PyPI package name.")
+            sys.exit(1)
+
+    def pyp2rpm(self, pypi: str):
+        if Popen(["which", "pyp2rpm"], stdout=PIPE, stderr=PIPE).wait():
+            bsl.error("pyp2rpm is not installed.")
+            sys.exit(1)
+        rc, stdout, _ = run_show_output(["pyp2rpm", pypi], "pyp2rpm │ ")
+        if rc:
+            bsl.error(f"pyp2rpm returned code {rc=}")
+            sys.exit(1)
+        bsl.info("Writing spec")
+        with open(f"python-{pypi}.spec", "w+") as f:
+            f.write(stdout)
+        print(f"out: python-{pypi}.spec")
+        return f"python-{pypi}.spec"
+
+    def __call__(self):
+        gen_anda(self.pyp2rpm(self.get_pypi()), ".")
 
 
 class Make(BuildSys):

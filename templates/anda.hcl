@@ -1,5 +1,5 @@
 project pkg {
-  rpm {
-	spec = "{{ spec }}"
-  }
+	rpm {
+		spec = "{{ spec }}"
+	}
 }
