@@ -7,9 +7,9 @@ from .scm import GitHub
 from .upd import generate_upd
 from .util import some
 
-# from typer import Argument, Option, Typer
+from typer import Argument, Option, Typer, Context
 
-# app = Typer()
+app = Typer()
 
 
 def determine_proj_type(files: list[str]) -> spec.BuildSys:
@@ -39,19 +39,26 @@ def determine_proj_type(files: list[str]) -> spec.BuildSys:
             exit("ERROR: Cannot determine project type.")
 
 
-def main():
-    # TODO: support for parsing cli
+@app.callback(no_args_is_help=True)
+def cb():
+    """Program to generate files for a new Terra project."""
+    pass
 
-    # if len(sys.argv) == 1:
-    #     return app(args=["--help"])
-    # if some(sys.argv[1:], lambda arg: arg.startswith("-")):
-    #     return app(args=["--help" if x == "-h" else x for x in sys.argv[1:]])
-    arg = sys.argv[1]
+
+@app.command()
+def rs(crate: str):
+    """Make a new project with rust crate name."""
+    pass
+
+
+@app.command()
+def scm(url: str):
+    """Make a new project with url to repo."""
     scm = None
-    if re.match(r"^https://github\.com/.+", arg):
+    if re.match(r"^https://github\.com/.+", url):
         print(":: Found SCM: GitHub")
-        scm = GitHub(arg)
-    if re.match(r"^https://gitlab\.com/.+", arg):
+        scm = GitHub(url)
+    if re.match(r"^https://gitlab\.com/.+", url):
         print(":: Found SCM: GitLab")
         # TODO: GitLab support
     if not scm:
@@ -63,5 +70,4 @@ def main():
     generate_upd(buildsys)
 
 
-if __name__ == "__main__":
-    main()
+app()
